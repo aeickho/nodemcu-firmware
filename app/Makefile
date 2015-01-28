@@ -26,11 +26,11 @@ SUBDIRS=    \
 	driver	\
 	lwip	\
 	json	\
-	ssl	\
 	upgrade	\
 	platform	\
 	libc 	\
 	lua 	\
+	mqtt	\
 	smart 	\
 	wofs 	\
 	modules	\
@@ -72,11 +72,11 @@ COMPONENTS_eagle.app.v6 = \
 	driver/libdriver.a	\
 	lwip/liblwip.a	\
 	json/libjson.a	\
-	ssl/libssl.a	\
 	upgrade/libupgrade.a	\
 	platform/libplatform.a	\
 	libc/liblibc.a 	\
 	lua/liblua.a 	\
+	mqtt/mqtt.a 	\
 	smart/smart.a 	\
 	wofs/wofs.a 	\
 	spiffs/spiffs.a 	\
@@ -99,6 +99,8 @@ LINKFLAGS_eagle.app.v6 = \
 	-lwpa	\
 	-lmain	\
 	-ljson	\
+	-lsmartconfig	\
+	-lssl	\
 	$(DEP_LIBS_eagle.app.v6)					\
 	-Wl,--end-group
 
@@ -152,15 +154,6 @@ INCLUDES += -I ./
 PDIR := ../$(PDIR)
 sinclude $(PDIR)Makefile
 
-#########################################################################
-#
-#  generate bin file
-#
-
-$(BINODIR)/%.bin: $(IMAGEODIR)/%.out
-	@mkdir -p $(BINODIR)
-	$(OBJCOPY) -O binary $< $@
 
 .PHONY: FORCE
 FORCE:
-

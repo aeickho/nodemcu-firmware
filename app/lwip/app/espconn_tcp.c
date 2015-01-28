@@ -188,7 +188,7 @@ espconn_tcp_sent(void *arg, uint8 *psent, uint16 length)
         data_to_send = true;
         ptcp_sent->pcommon.ptrbuf = psent + len;
         ptcp_sent->pcommon.cntr = length - len;
-        ptcp_sent->pcommon.write_len = len;
+        ptcp_sent->pcommon.write_len += len;
         espconn_printf("espconn_tcp_sent sending %d bytes, remain %d\n", len, ptcp_sent->pcommon.cntr);
     }
 
@@ -811,10 +811,6 @@ espconn_tcp_accept(void *arg, struct tcp_pcb *pcb, err_t err)
     espconn_msg *paccept = NULL;
     remot_info *pinfo = NULL;
     LWIP_UNUSED_ARG(err);
-
-    if(4096>system_get_free_heap_size()){
-    	return ERR_MEM;
-    }
 
     paccept = (espconn_msg *)os_zalloc(sizeof(espconn_msg));
     tcp_arg(pcb, paccept);

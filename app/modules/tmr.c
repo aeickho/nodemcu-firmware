@@ -12,57 +12,50 @@
 static os_timer_t alarm_timer[NUM_TMR];
 static int alarm_timer_cb_ref[NUM_TMR] = {LUA_NOREF,LUA_NOREF,LUA_NOREF,LUA_NOREF,LUA_NOREF,LUA_NOREF,LUA_NOREF};
 
-void ICACHE_FLASH_ATTR alarm_timer_common(lua_State* L, unsigned id){
+void alarm_timer_common(lua_State* L, unsigned id){
   if(alarm_timer_cb_ref[id] == LUA_NOREF)
     return;
   lua_rawgeti(L, LUA_REGISTRYINDEX, alarm_timer_cb_ref[id]);
   lua_call(L, 0, 0);
 }
 
-void ICACHE_FLASH_ATTR
-alarm_timer_cb0(void *arg){
+void alarm_timer_cb0(void *arg){
   if( !arg )
     return;
   alarm_timer_common((lua_State*)arg, 0);
 }
 
-void ICACHE_FLASH_ATTR
-alarm_timer_cb1(void *arg){
+void alarm_timer_cb1(void *arg){
   if( !arg )
     return;
   alarm_timer_common((lua_State*)arg, 1);
 }
 
-void ICACHE_FLASH_ATTR
-alarm_timer_cb2(void *arg){
+void alarm_timer_cb2(void *arg){
   if( !arg )
     return;
   alarm_timer_common((lua_State*)arg, 2);
 }
 
-void ICACHE_FLASH_ATTR
-alarm_timer_cb3(void *arg){
+void alarm_timer_cb3(void *arg){
   if( !arg )
     return;
   alarm_timer_common((lua_State*)arg, 3);
 }
 
-void ICACHE_FLASH_ATTR
-alarm_timer_cb4(void *arg){
+void alarm_timer_cb4(void *arg){
   if( !arg )
     return;
   alarm_timer_common((lua_State*)arg, 4);
 }
 
-void ICACHE_FLASH_ATTR
-alarm_timer_cb5(void *arg){
+void alarm_timer_cb5(void *arg){
   if( !arg )
     return;
   alarm_timer_common((lua_State*)arg, 5);
 }
 
-void ICACHE_FLASH_ATTR
-alarm_timer_cb6(void *arg){
+void alarm_timer_cb6(void *arg){
   if( !arg )
     return;
   alarm_timer_common((lua_State*)arg, 6);
@@ -72,7 +65,7 @@ typedef void (*alarm_timer_callback)(void *arg);
 static alarm_timer_callback alarm_timer_cb[NUM_TMR] = {alarm_timer_cb0,alarm_timer_cb1,alarm_timer_cb2,alarm_timer_cb3,alarm_timer_cb4,alarm_timer_cb5,alarm_timer_cb6};
 
 // Lua: delay( us )
-static int ICACHE_FLASH_ATTR tmr_delay( lua_State* L )
+static int tmr_delay( lua_State* L )
 {
   s32 us;
   us = luaL_checkinteger( L, 1 );
@@ -91,7 +84,7 @@ static int ICACHE_FLASH_ATTR tmr_delay( lua_State* L )
 }
 
 // Lua: now() , return system timer in us
-static int ICACHE_FLASH_ATTR tmr_now( lua_State* L )
+static int tmr_now( lua_State* L )
 {
   unsigned now = 0x7FFFFFFF & system_get_time();
   lua_pushinteger( L, now );
@@ -99,7 +92,7 @@ static int ICACHE_FLASH_ATTR tmr_now( lua_State* L )
 }
 
 // Lua: alarm( id, interval, repeat, function )
-static int ICACHE_FLASH_ATTR tmr_alarm( lua_State* L )
+static int tmr_alarm( lua_State* L )
 {
   s32 interval;
   unsigned repeat = 0;
@@ -136,7 +129,7 @@ static int ICACHE_FLASH_ATTR tmr_alarm( lua_State* L )
 }
 
 // Lua: stop( id )
-static int ICACHE_FLASH_ATTR tmr_stop( lua_State* L )
+static int tmr_stop( lua_State* L )
 {
   unsigned id = luaL_checkinteger( L, 1 );
   MOD_CHECK_ID( tmr, id );
@@ -147,21 +140,33 @@ static int ICACHE_FLASH_ATTR tmr_stop( lua_State* L )
 
 // extern void update_key_led();
 // Lua: wdclr()
-static int ICACHE_FLASH_ATTR tmr_wdclr( lua_State* L )
+static int tmr_wdclr( lua_State* L )
 {
   WRITE_PERI_REG(0x60000914, 0x73);
   // update_key_led();
   return 0;  
 }
 
-// Lua: time() , return rtc time in us
-static int ICACHE_FLASH_ATTR tmr_time( lua_State* L )
+static os_timer_t rtc_timer_updator;
+static uint64_t cur_count = 0;
+static uint64_t rtc_us = 0;
+void rtc_timer_update_cb(void *arg){
+  uint64_t t = (uint64_t)system_get_rtc_time();
+  uint64_t delta = (t>=cur_count)?(t - cur_count):(0x100000000 + t - cur_count);
+  // NODE_ERR("%x\n",t);
+  cur_count = t;
+  unsigned c = system_rtc_clock_cali_proc();
+  uint64_t itg = c >> 12;
+  uint64_t dec = c & 0xFFF;
+  rtc_us += (delta*itg + ((delta*dec)>>12));
+  // TODO: store rtc_us to rtc memory.
+}
+// Lua: time() , return rtc time in second
+static int tmr_time( lua_State* L )
 {
-  unsigned t = 0xFFFFFFFF & system_get_rtc_time();
-  unsigned c = 0xFFFFFFFF & system_rtc_clock_cali_proc();
-  lua_pushinteger( L, t );
-  lua_pushinteger( L, c );
-  return 2; 
+  uint64_t local = rtc_us;
+  lua_pushinteger( L, ((uint32_t)(local/1000000)) & 0x7FFFFFFF );
+  return 1; 
 }
 
 // Module function map
@@ -181,13 +186,17 @@ const LUA_REG_TYPE tmr_map[] =
   { LNILKEY, LNILVAL }
 };
 
-LUALIB_API int ICACHE_FLASH_ATTR luaopen_tmr( lua_State *L )
+LUALIB_API int luaopen_tmr( lua_State *L )
 {
   int i = 0;
   for(i=0;i<NUM_TMR;i++){
     os_timer_disarm(&(alarm_timer[i]));
     os_timer_setfn(&(alarm_timer[i]), (os_timer_func_t *)(alarm_timer_cb[i]), L);
   }
+
+  os_timer_disarm(&rtc_timer_updator);
+  os_timer_setfn(&rtc_timer_updator, (os_timer_func_t *)(rtc_timer_update_cb), NULL);
+  os_timer_arm(&rtc_timer_updator, 500, 1); 
 
 #if LUA_OPTIMIZE_MEMORY > 0
   return 0;
